@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -27,9 +26,9 @@
       const [avgCost, setAvgCost] = useState(5.96);
       const [currentPrice, setCurrentPrice] = useState(5.8);
       const [weeklyDist, setWeeklyDist] = useState(0.10);
-      const [rocPercent, setRocPercent] = useState(12.82); // default based on Reddit data (12.82% ROC)
+      const [rocPercent, setRocPercent] = useState(12.82); // ROC as a percentage
 
-      // Scenario sliders (local state for quick what-if analysis)
+      // Scenario sliders (what-if analysis)
       const [scenarioDist, setScenarioDist] = useState(weeklyDist);
       const [scenarioPrice, setScenarioPrice] = useState(currentPrice);
 
@@ -42,7 +41,7 @@
         const sharesData = [];
         const taxableYTDData = [];
         let accTaxable = 0;
-        const rocFraction = (rocPercent / 100);
+        const rocFraction = rocPercent / 100;
         for (let i = 0; i < 52; i++) {
           const distPaid = scenarioDist * totalSharesVar;
           const reinvested = distPaid;
@@ -72,7 +71,7 @@
         return { rows, labels, incomeData, sharesData, taxableYTDData, finalShares: totalSharesVar };
       }, [shares, scenarioDist, scenarioPrice, rocPercent]);
 
-      // Final metrics from schedule
+      // Final metrics
       const finalRow = schedule.rows[schedule.rows.length - 1] || {};
       const avgMonthlyIncome = finalRow.monthlyIncome || 0;
       const annualizedIncome = finalRow.annualIncome || 0;
@@ -83,19 +82,13 @@
 
       // Chart refs
       const incomeChartRef = useRef(null);
-      const sharesChartRef = useRef(null);
       const breakdownChartRef = useRef(null);
 
-      // Income & Shares charts
+      // Income & Shares chart
       useEffect(() => {
-        // Destroy previous charts if they exist
         if (incomeChartRef.current.chartInstance) {
           incomeChartRef.current.chartInstance.destroy();
         }
-        if (sharesChartRef.current.chartInstance) {
-          sharesChartRef.current.chartInstance.destroy();
-        }
-        // Income chart
         const ctxIncome = incomeChartRef.current.getContext('2d');
         incomeChartRef.current.chartInstance = new Chart(ctxIncome, {
           type: 'line',
@@ -142,7 +135,6 @@
             plugins: { legend: { position: 'top' } }
           }
         });
-        // Shares chart: We'll reuse the same area or not; here we separate into the next chart but we only implement one area chart (breakdown) below.
       }, [schedule]);
 
       // Distribution breakdown chart
@@ -160,7 +152,7 @@
             labels: schedule.labels,
             datasets: [
               {
-                label: 'Non-Taxable (ROC)',
+                label: 'Non‑Taxable (ROC)',
                 data: nonTaxableData,
                 backgroundColor: '#A7F3D0'
               },
@@ -220,19 +212,19 @@
 
           {/* Charts & Scenario Controls */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {/* Weekly Income Growth chart */}
+            {/* Income & Shares Growth chart */}
             <div className="bg-white p-4 rounded-md shadow flex flex-col">
               <h3 className="text-lg font-semibold mb-2">Weekly Income & Shares Growth</h3>
               <canvas ref={incomeChartRef} height="250"></canvas>
             </div>
 
-            {/* Total Shares Growth chart omitted since combined above; we can duplicate but we use the same chart for both lines. */}
-
-            {/* Scenario Panel */}
+            {/* Scenario Planner */}
             <div className="bg-white p-4 rounded-md shadow flex flex-col space-y-4 lg:col-span-1">
               <h3 className="text-lg font-semibold">Scenario Planner</h3>
               <div>
-                <label className="block text-sm font-medium">If distribution drops to: <span className="font-bold">{scenarioDist.toFixed(3)}</span> $ per share</label>
+                <label className="block text-sm font-medium">
+                  If distribution drops to: <span className="font-bold">{scenarioDist.toFixed(3)}</span> $ per share
+                </label>
                 <input
                   type="range"
                   min="0"
@@ -244,7 +236,9 @@
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium">If price drops to: <span className="font-bold">${scenarioPrice.toFixed(2)}</span></label>
+                <label className="block text-sm font-medium">
+                  If price drops to: <span className="font-bold">${scenarioPrice.toFixed(2)}</span>
+                </label>
                 <input
                   type="range"
                   min="1"
@@ -256,7 +250,7 @@
                 />
               </div>
               <div className="text-xs text-gray-600">
-                The charts and metrics update instantly to reflect your what-if values above.
+                The charts and metrics update instantly to reflect your what‑if values above.
               </div>
             </div>
           </div>
