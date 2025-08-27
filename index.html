@@ -1,8 +1,9 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ULTY Income Calculator</title>
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -15,18 +16,22 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body class="bg-[#F9FAFB] min-h-screen">
-  <div id="root" class="container mx-auto p-6"></div>
+  <div id="root" class="max-w-7xl mx-auto p-6"></div>
 
   <script type="text/babel">
     const { useState, useMemo, useEffect, useRef } = React;
 
     function App() {
-      // State variables
+      // State variables for main inputs
       const [shares, setShares] = useState(3000);
       const [avgCost, setAvgCost] = useState(5.96);
       const [currentPrice, setCurrentPrice] = useState(5.8);
       const [weeklyDist, setWeeklyDist] = useState(0.10);
-      const [roc, setRoc] = useState(1); // 1 = 100% Return of Capital (non-taxable)
+      const [rocPercent, setRocPercent] = useState(12.82); // default based on Reddit data (12.82% ROC)
+
+      // Scenario sliders (local state for quick what-if analysis)
+      const [scenarioDist, setScenarioDist] = useState(weeklyDist);
+      const [scenarioPrice, setScenarioPrice] = useState(currentPrice);
 
       // Compute schedule and metrics
       const schedule = useMemo(() => {
@@ -35,22 +40,23 @@
         const labels = [];
         const incomeData = [];
         const sharesData = [];
-        const taxableYTD = [];
+        const taxableYTDData = [];
         let accTaxable = 0;
-
+        const rocFraction = (rocPercent / 100);
         for (let i = 0; i < 52; i++) {
-          const distPaid = weeklyDist * totalSharesVar;
-          const reinvested = distPaid; // no cash hold/withdrawal for now
-          const newShares = reinvested / currentPrice;
+          const distPaid = scenarioDist * totalSharesVar;
+          const reinvested = distPaid;
+          const newShares = reinvested / scenarioPrice;
           totalSharesVar += newShares;
           const monthlyIncome = distPaid * 4.333;
           const annualIncome = distPaid * 52;
-          const taxableWeek = distPaid * (1 - roc);
+          const taxableWeek = distPaid * (1 - rocFraction);
           accTaxable += taxableWeek;
-
           rows.push({
             week: i + 1,
+            distPerShare: scenarioDist,
             distributionPaid: distPaid,
+            reinvested: reinvested,
             newShares: newShares,
             totalShares: totalSharesVar,
             monthlyIncome: monthlyIncome,
@@ -61,29 +67,37 @@
           labels.push(`W${i + 1}`);
           incomeData.push(annualIncome);
           sharesData.push(totalSharesVar);
-          taxableYTD.push(accTaxable);
+          taxableYTDData.push(accTaxable);
         }
-        return { rows, labels, incomeData, sharesData, taxableYTD, finalTotals: totalSharesVar };
-      }, [shares, currentPrice, weeklyDist, roc]);
+        return { rows, labels, incomeData, sharesData, taxableYTDData, finalShares: totalSharesVar };
+      }, [shares, scenarioDist, scenarioPrice, rocPercent]);
 
-      // Final metrics
+      // Final metrics from schedule
       const finalRow = schedule.rows[schedule.rows.length - 1] || {};
       const avgMonthlyIncome = finalRow.monthlyIncome || 0;
       const annualizedIncome = finalRow.annualIncome || 0;
-      const totalValue = finalRow.totalShares * currentPrice || 0;
+      const totalValue = finalRow.totalShares * scenarioPrice || 0;
       const initialInvestment = shares * avgCost;
       const totalReturn = totalValue - initialInvestment;
-      const taxableYTDTotal = finalRow.taxableYTD || 0;
+      const ytdTaxable = finalRow.taxableYTD || 0;
 
-      // Chart
-      const chartRef = useRef(null);
+      // Chart refs
+      const incomeChartRef = useRef(null);
+      const sharesChartRef = useRef(null);
+      const breakdownChartRef = useRef(null);
 
+      // Income & Shares charts
       useEffect(() => {
-        const ctx = chartRef.current.getContext('2d');
-        if (chartRef.current.chartInstance) {
-          chartRef.current.chartInstance.destroy();
+        // Destroy previous charts if they exist
+        if (incomeChartRef.current.chartInstance) {
+          incomeChartRef.current.chartInstance.destroy();
         }
-        chartRef.current.chartInstance = new Chart(ctx, {
+        if (sharesChartRef.current.chartInstance) {
+          sharesChartRef.current.chartInstance.destroy();
+        }
+        // Income chart
+        const ctxIncome = incomeChartRef.current.getContext('2d');
+        incomeChartRef.current.chartInstance = new Chart(ctxIncome, {
           type: 'line',
           data: {
             labels: schedule.labels,
@@ -91,16 +105,20 @@
               {
                 label: 'Annualized Income',
                 data: schedule.incomeData,
+                borderColor: '#065F46',
+                backgroundColor: 'rgba(6, 95, 70, 0.1)',
                 borderWidth: 2,
-                fill: false,
-                tension: 0.1
+                tension: 0.3,
+                fill: false
               },
               {
                 label: 'Total Shares',
                 data: schedule.sharesData,
+                borderColor: '#FBBF24',
+                backgroundColor: 'rgba(251, 191, 36, 0.1)',
                 borderWidth: 2,
+                tension: 0.3,
                 fill: false,
-                tension: 0.1,
                 yAxisID: 'y1'
               }
             ]
@@ -111,7 +129,8 @@
             scales: {
               y: {
                 beginAtZero: true,
-                title: { display: true, text: 'Annualized Income ($)' }
+                title: { display: true, text: 'Annualized Income ($)' },
+                grid: { drawOnChartArea: true }
               },
               y1: {
                 beginAtZero: true,
@@ -120,123 +139,164 @@
                 grid: { drawOnChartArea: false }
               }
             },
-            plugins: {
-              legend: { position: 'top' }
-            }
+            plugins: { legend: { position: 'top' } }
+          }
+        });
+        // Shares chart: We'll reuse the same area or not; here we separate into the next chart but we only implement one area chart (breakdown) below.
+      }, [schedule]);
+
+      // Distribution breakdown chart
+      useEffect(() => {
+        if (breakdownChartRef.current.chartInstance) {
+          breakdownChartRef.current.chartInstance.destroy();
+        }
+        const ctx = breakdownChartRef.current.getContext('2d');
+        const distData = schedule.rows.map((row) => row.distributionPaid);
+        const taxableData = schedule.rows.map((row) => row.taxableWeek);
+        const nonTaxableData = distData.map((d, i) => d - taxableData[i]);
+        breakdownChartRef.current.chartInstance = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: schedule.labels,
+            datasets: [
+              {
+                label: 'Non-Taxable (ROC)',
+                data: nonTaxableData,
+                backgroundColor: '#A7F3D0'
+              },
+              {
+                label: 'Taxable',
+                data: taxableData,
+                backgroundColor: '#FBBF24'
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            scales: {
+              x: { stacked: true },
+              y: {
+                stacked: true,
+                beginAtZero: true,
+                title: { display: true, text: 'Distribution Paid ($)' }
+              }
+            },
+            plugins: { legend: { position: 'top' } }
           }
         });
       }, [schedule]);
 
       return (
-        <div className="space-y-8">
-          {/* Header */}
-          <header className="bg-[#065F46] text-white p-6 rounded-md shadow">
-            <h1 className="text-3xl font-bold text-center">ULTY Income Calculator</h1>
-          </header>
+        <div className="space-y-6">
+          {/* Navigation / Header */}
+          <div className="flex flex-col sm:flex-row items-center justify-between bg-[#065F46] text-white p-4 rounded-md shadow">
+            <h1 className="text-3xl font-bold">ULTY Income Calculator</h1>
+            <div className="flex space-x-4 mt-2 sm:mt-0">
+              <a href="#" className="hover:text-[#FBBF24]">Export CSV</a>
+              <a href="#" className="hover:text-[#FBBF24]">Tip Jar</a>
+              <a href="#" className="hover:text-[#FBBF24]">Settings</a>
+            </div>
+          </div>
 
-          {/* Summary Metrics */}
-          <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+          {/* Summary Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-[#A7F3D0] p-4 rounded-md border-l-4 border-[#065F46] shadow">
-              <h2 className="text-lg font-semibold">Avg Monthly Income</h2>
-              <p className="text-2xl font-bold">${avgMonthlyIncome.toFixed(2)}</p>
+              <h2 className="text-md font-semibold">Avg Monthly Income</h2>
+              <p className="text-3xl font-bold">${avgMonthlyIncome.toFixed(2)}</p>
             </div>
             <div className="bg-[#A7F3D0] p-4 rounded-md border-l-4 border-[#065F46] shadow">
-              <h2 className="text-lg font-semibold">Annualized Income</h2>
-              <p className="text-2xl font-bold">${annualizedIncome.toFixed(2)}</p>
+              <h2 className="text-md font-semibold">Annualized Income</h2>
+              <p className="text-3xl font-bold">${annualizedIncome.toFixed(2)}</p>
             </div>
             <div className="bg-[#A7F3D0] p-4 rounded-md border-l-4 border-[#065F46] shadow">
-              <h2 className="text-lg font-semibold">Portfolio Value</h2>
-              <p className="text-2xl font-bold">${totalValue.toFixed(2)}</p>
+              <h2 className="text-md font-semibold">Portfolio Value</h2>
+              <p className="text-3xl font-bold">${totalValue.toFixed(2)}</p>
             </div>
             <div className="bg-[#A7F3D0] p-4 rounded-md border-l-4 border-[#065F46] shadow">
-              <h2 className="text-lg font-semibold">YTD Taxable Income</h2>
-              <p className="text-2xl font-bold">${taxableYTDTotal.toFixed(2)}</p>
+              <h2 className="text-md font-semibold">YTD Taxable Income</h2>
+              <p className="text-3xl font-bold">${ytdTaxable.toFixed(2)}</p>
             </div>
-            <div className="bg-[#A7F3D0] p-4 rounded-md border-l-4 border-[#065F46] shadow">
-              <h2 className="text-lg font-semibold">Total Return</h2>
-              <p className="text-2xl font-bold">${totalReturn.toFixed(2)}</p>
-            </div>
-          </section>
+          </div>
 
-          {/* Inputs & Chart */}
-          <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Inputs */}
-            <div className="bg-[#A7F3D0] p-4 rounded-md shadow">
-              <h2 className="text-xl font-semibold mb-3">Inputs</h2>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium">Number of Shares</label>
-                  <input type="number" className="mt-1 p-2 border rounded w-full" value={shares}
-                    onChange={(e) => setShares(parseFloat(e.target.value) || 0)} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium">Average Cost per Share ($)</label>
-                    <input type="number" step="0.01" className="mt-1 p-2 border rounded w-full" value={avgCost}
-                    onChange={(e) => setAvgCost(parseFloat(e.target.value) || 0)} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium">Current Share Price ($)</label>
-                  <input type="number" step="0.01" className="mt-1 p-2 border rounded w-full" value={currentPrice}
-                    onChange={(e) => setCurrentPrice(parseFloat(e.target.value) || 0)} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium">Weekly Distribution per Share ($)</label>
-                  <input type="number" step="0.001" className="mt-1 p-2 border rounded w-full" value={weeklyDist}
-                    onChange={(e) => setWeeklyDist(parseFloat(e.target.value) || 0)} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium">Return of Capital (%)</label>
-                  <input type="number" step="0.01" min="0" max="1" className="mt-1 p-2 border rounded w-full" value={roc}
-                    onChange={(e) => setRoc(parseFloat(e.target.value) || 0)} />
-                  <p className="text-xs text-gray-600">1 = 100% ROC, 0.5 = 50% ROC, etc.</p>
-                </div>
+          {/* Charts & Scenario Controls */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Weekly Income Growth chart */}
+            <div className="bg-white p-4 rounded-md shadow flex flex-col">
+              <h3 className="text-lg font-semibold mb-2">Weekly Income & Shares Growth</h3>
+              <canvas ref={incomeChartRef} height="250"></canvas>
+            </div>
+
+            {/* Total Shares Growth chart omitted since combined above; we can duplicate but we use the same chart for both lines. */}
+
+            {/* Scenario Panel */}
+            <div className="bg-white p-4 rounded-md shadow flex flex-col space-y-4 lg:col-span-1">
+              <h3 className="text-lg font-semibold">Scenario Planner</h3>
+              <div>
+                <label className="block text-sm font-medium">If distribution drops to: <span className="font-bold">{scenarioDist.toFixed(3)}</span> $ per share</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="0.20"
+                  step="0.005"
+                  value={scenarioDist}
+                  onChange={(e) => setScenarioDist(parseFloat(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium">If price drops to: <span className="font-bold">${scenarioPrice.toFixed(2)}</span></label>
+                <input
+                  type="range"
+                  min="1"
+                  max="10"
+                  step="0.1"
+                  value={scenarioPrice}
+                  onChange={(e) => setScenarioPrice(parseFloat(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+              <div className="text-xs text-gray-600">
+                The charts and metrics update instantly to reflect your what-if values above.
               </div>
             </div>
+          </div>
 
-            {/* Chart */}
-            <div className="bg-white p-4 rounded-md shadow">
-              <h2 className="text-xl font-semibold mb-3">Income & Shares Growth</h2>
-              <canvas ref={chartRef} height="300"></canvas>
-            </div>
-          </section>
+          {/* Distribution Breakdown Chart */}
+          <div className="bg-white p-4 rounded-md shadow">
+            <h3 className="text-lg font-semibold mb-2">Distribution Breakdown</h3>
+            <canvas ref={breakdownChartRef} height="250"></canvas>
+          </div>
 
-          {/* Weekly Schedule */}
-          <section className="bg-white p-4 rounded-md shadow overflow-x-auto">
-            <h2 className="text-xl font-semibold mb-3">Weekly Schedule (First 12 Weeks)</h2>
-            <table className="min-w-full table-auto text-sm">
+          {/* Weekly Schedule Table */}
+          <div className="bg-white p-4 rounded-md shadow overflow-x-auto">
+            <h3 className="text-lg font-semibold mb-2">Weekly Schedule (First 12 Weeks)</h3>
+            <table className="min-w-full table-auto text-xs">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-2 py-1 border">Week</th>
-                  <th className="px-2 py-1 border">Distribution Paid ($)</th>
-                  <th className="px-2 py-1 border">New Shares</th>
+                  <th className="px-2 py-1 border">Dist / Share ($)</th>
+                  <th className="px-2 py-1 border">Reinvested ($)</th>
                   <th className="px-2 py-1 border">Total Shares</th>
-                  <th className="px-2 py-1 border">Monthly Income ($)</th>
-                  <th className="px-2 py-1 border">Annual Income ($)</th>
-                  <th className="px-2 py-1 border">Taxable YTD ($)</th>
+                  <th className="px-2 py-1 border">Annualized Income ($)</th>
                 </tr>
               </thead>
               <tbody>
                 {schedule.rows.slice(0, 12).map((row) => (
                   <tr key={row.week} className={row.week % 2 === 0 ? 'bg-gray-100' : ''}>
-                    <td className="px-2 py-1 border">{row.week}</td>
-                    <td className="px-2 py-1 border">${row.distributionPaid.toFixed(2)}</td>
-                    <td className="px-2 py-1 border">{row.newShares.toFixed(4)}</td>
-                    <td className="px-2 py-1 border">{row.totalShares.toFixed(4)}</td>
-                    <td className="px-2 py-1 border">${row.monthlyIncome.toFixed(2)}</td>
-                    <td className="px-2 py-1 border">${row.annualIncome.toFixed(2)}</td>
-                    <td className="px-2 py-1 border">${row.taxableYTD.toFixed(2)}</td>
+                    <td className="px-2 py-1 border text-center">{row.week}</td>
+                    <td className="px-2 py-1 border text-right">${row.distPerShare.toFixed(3)}</td>
+                    <td className="px-2 py-1 border text-right">${row.distributionPaid.toFixed(2)}</td>
+                    <td className="px-2 py-1 border text-right">{row.totalShares.toFixed(4)}</td>
+                    <td className="px-2 py-1 border text-right">${row.annualIncome.toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </section>
+          </div>
 
-          {/* Footer / Tip Jar */}
-          <footer className="text-center text-sm text-gray-600 mt-8">
-            If this tool helped you, consider leaving a tip. 
-            <a href="#" className="ml-1 text-[#065F46] font-semibold underline hover:text-[#FBBF24]">
-              Tip Jar
-            </a>
+          {/* Footer / Tip Message */}
+          <footer className="text-center text-sm text-gray-700 mt-6">
+            If this helped you forecast your ULTY income, consider leaving a tip 🪙
           </footer>
         </div>
       );
